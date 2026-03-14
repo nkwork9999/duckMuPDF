@@ -47,10 +47,10 @@ add_dependencies(${LOADABLE_EXTENSION_NAME} mupdf_build)
 
 # Merge MuPDF static libraries into the extension static library
 # so that DuckDB's build system can link everything in one step
-# Merge MuPDF archives into static extension using MRI script (Linux) or libtool (macOS)
-# NOTE: output must be a temp file because ar MRI cannot read and write the same archive
+# Merge MuPDF archives into static extension
+# add_custom_command cannot use shell pipes, so use sh -c for Linux
 set(MERGED_LIB ${CMAKE_BINARY_DIR}/merged_pdfmd.a)
-set(MRI_SCRIPT ${CMAKE_BINARY_DIR}/merge_mupdf.mri)
+set(MUPDF_MERGE_DIR ${CMAKE_BINARY_DIR}/mupdf_objs)
 if(APPLE)
     add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
         COMMAND libtool -static -o ${MERGED_LIB}
@@ -61,21 +61,12 @@ if(APPLE)
         COMMENT "Merging MuPDF into pdfmd_extension (macOS)"
     )
 else()
-    file(WRITE ${MRI_SCRIPT}
-"create __MERGED__\n\
-addlib __EXT_LIB__\n\
-addlib __MUPDF__\n\
-addlib __MUPDF_THIRD__\n\
-save\n\
-end\n")
     add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
-        COMMAND sed -e "s|__MERGED__|${MERGED_LIB}|"
-                    -e "s|__EXT_LIB__|$<TARGET_FILE:${EXTENSION_NAME}>|"
-                    -e "s|__MUPDF__|${MUPDF_BUILD_DIR}/libmupdf.a|"
-                    -e "s|__MUPDF_THIRD__|${MUPDF_BUILD_DIR}/libmupdf-third.a|"
-                    ${MRI_SCRIPT} | ${CMAKE_AR} -M
-        COMMAND ${CMAKE_COMMAND} -E rename ${MERGED_LIB} $<TARGET_FILE:${EXTENSION_NAME}>
-        COMMENT "Merging MuPDF into pdfmd_extension (Linux MRI)"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${MUPDF_MERGE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${MUPDF_MERGE_DIR}
+        COMMAND sh -c "cd ${MUPDF_MERGE_DIR} && ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf.a && ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf-third.a && find . -name '*.o' -exec ${CMAKE_AR} qcs $<TARGET_FILE:${EXTENSION_NAME}> {} +"
+        COMMAND ${CMAKE_COMMAND} -E rm -rf ${MUPDF_MERGE_DIR}
+        COMMENT "Merging MuPDF into pdfmd_extension (Linux)"
     )
 endif()
 
