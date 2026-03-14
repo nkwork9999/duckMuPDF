@@ -8,16 +8,32 @@ project(${TARGET_NAME})
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# MuPDF ライブラリを検索
-find_library(MUPDF_LIB mupdf HINTS /usr/local/lib /opt/homebrew/lib)
-find_path(MUPDF_INCLUDE mupdf/fitz.h HINTS /usr/local/include /opt/homebrew/include)
+# MuPDF をソースからビルド
+set(MUPDF_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mupdf)
+set(MUPDF_BUILD_DIR ${MUPDF_DIR}/build/release)
 
-if(NOT MUPDF_LIB OR NOT MUPDF_INCLUDE)
-    message(FATAL_ERROR "MuPDF not found. Install with: brew install mupdf (macOS) or apt-get install libmupdf-dev (Linux)")
-endif()
+include(ExternalProject)
+ExternalProject_Add(mupdf_build
+    SOURCE_DIR ${MUPDF_DIR}
+    CONFIGURE_COMMAND ""
+    BUILD_COMMAND make -C ${MUPDF_DIR} libs
+        HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no
+        HAVE_TESSERACT=no HAVE_LEPTONICA=no
+        build=release "XCFLAGS=-fPIC"
+    BUILD_IN_SOURCE TRUE
+    INSTALL_COMMAND ""
+    BUILD_BYPRODUCTS
+        ${MUPDF_BUILD_DIR}/libmupdf.a
+        ${MUPDF_BUILD_DIR}/libmupdf-third.a
+)
 
-message(STATUS "MuPDF lib: ${MUPDF_LIB}")
-message(STATUS "MuPDF include: ${MUPDF_INCLUDE}")
+add_library(mupdf_lib STATIC IMPORTED)
+set_target_properties(mupdf_lib PROPERTIES IMPORTED_LOCATION ${MUPDF_BUILD_DIR}/libmupdf.a)
+add_dependencies(mupdf_lib mupdf_build)
+
+add_library(mupdf_third_lib STATIC IMPORTED)
+set_target_properties(mupdf_third_lib PROPERTIES IMPORTED_LOCATION ${MUPDF_BUILD_DIR}/libmupdf-third.a)
+add_dependencies(mupdf_third_lib mupdf_build)
 
 set(EXTENSION_SOURCES
     src/pdfmd_extension.cpp
@@ -25,23 +41,16 @@ set(EXTENSION_SOURCES
     src/pdf_to_markdown.cpp
 )
 
-include_directories(src/include ${MUPDF_INCLUDE})
+include_directories(src/include ${MUPDF_DIR}/include)
 
 build_static_extension(${TARGET_NAME} ${EXTENSION_SOURCES})
 build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 
-# MuPDF をリンク
-target_link_libraries(${EXTENSION_NAME} ${MUPDF_LIB})
-target_link_libraries(${LOADABLE_EXTENSION_NAME} ${MUPDF_LIB})
+add_dependencies(${EXTENSION_NAME} mupdf_build)
+add_dependencies(${LOADABLE_EXTENSION_NAME} mupdf_build)
 
-# macOS では追加フレームワークが必要な場合
-if(APPLE)
-    find_library(MUPDF_THIRD mupdf-third HINTS /usr/local/lib /opt/homebrew/lib)
-    if(MUPDF_THIRD)
-        target_link_libraries(${EXTENSION_NAME} ${MUPDF_THIRD})
-        target_link_libraries(${LOADABLE_EXTENSION_NAME} ${MUPDF_THIRD})
-    endif()
-endif()
+target_link_libraries(${EXTENSION_NAME} mupdf_lib mupdf_third_lib)
+target_link_libraries(${LOADABLE_EXTENSION_NAME} mupdf_lib mupdf_third_lib)
 
 install(
   TARGETS ${EXTENSION_NAME}

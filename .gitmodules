@@ -4,3 +4,6 @@
 [submodule "extension-ci-tools"]
 	path = extension-ci-tools
 	url = https://github.com/duckdb/extension-ci-tools.git
+[submodule "third_party/mupdf"]
+	path = third_party/mupdf
+	url = https://github.com/ArtifexSoftware/mupdf.git
