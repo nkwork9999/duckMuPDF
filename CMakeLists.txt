@@ -61,7 +61,10 @@ EXT_A=\"$5\"
 rm -rf \"$MERGE_DIR\"
 mkdir -p \"$MERGE_DIR\"
 cd \"$MERGE_DIR\"
+# ar x needs directories to exist when members have path components
+\"$AR\" t \"$MUPDF_A\" | grep / | sed 's|/[^/]*$||' | sort -u | xargs -I{} mkdir -p \"{}\"
 \"$AR\" x \"$MUPDF_A\"
+\"$AR\" t \"$MUPDF_THIRD_A\" | grep / | sed 's|/[^/]*$||' | sort -u | xargs -I{} mkdir -p \"{}\"
 \"$AR\" x \"$MUPDF_THIRD_A\"
 find . -name '*.o' -exec \"$AR\" qcs \"$EXT_A\" {} +
 rm -rf \"$MERGE_DIR\"
