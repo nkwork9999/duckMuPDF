@@ -47,7 +47,8 @@ add_dependencies(${LOADABLE_EXTENSION_NAME} mupdf_build)
 
 # Merge MuPDF static libraries into the extension static library
 # so that DuckDB's build system can link everything in one step
-set(MUPDF_MERGE_DIR ${CMAKE_BINARY_DIR}/mupdf_objs)
+# Merge MuPDF archives into static extension using MRI script (Linux) or libtool (macOS)
+set(MRI_SCRIPT ${CMAKE_BINARY_DIR}/merge_mupdf.mri)
 if(APPLE)
     add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
         COMMAND libtool -static -o $<TARGET_FILE:${EXTENSION_NAME}>
@@ -57,13 +58,20 @@ if(APPLE)
         COMMENT "Merging MuPDF into pdfmd_extension (macOS)"
     )
 else()
+    file(WRITE ${MRI_SCRIPT}
+"create __OUTPUT__\n\
+addlib __EXT_LIB__\n\
+addlib __MUPDF__\n\
+addlib __MUPDF_THIRD__\n\
+save\n\
+end\n")
     add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${MUPDF_MERGE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E chdir ${MUPDF_MERGE_DIR} ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf.a
-        COMMAND ${CMAKE_COMMAND} -E chdir ${MUPDF_MERGE_DIR} ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf-third.a
-        COMMAND ${CMAKE_AR} qcs $<TARGET_FILE:${EXTENSION_NAME}> ${MUPDF_MERGE_DIR}/*.o
-        COMMAND ${CMAKE_COMMAND} -E remove_directory ${MUPDF_MERGE_DIR}
-        COMMENT "Merging MuPDF into pdfmd_extension (Linux)"
+        COMMAND sed -e "s|__OUTPUT__|$<TARGET_FILE:${EXTENSION_NAME}>|"
+                    -e "s|__EXT_LIB__|$<TARGET_FILE:${EXTENSION_NAME}>|"
+                    -e "s|__MUPDF__|${MUPDF_BUILD_DIR}/libmupdf.a|"
+                    -e "s|__MUPDF_THIRD__|${MUPDF_BUILD_DIR}/libmupdf-third.a|"
+                    ${MRI_SCRIPT} | ${CMAKE_AR} -M
+        COMMENT "Merging MuPDF into pdfmd_extension (Linux MRI)"
     )
 endif()
 
