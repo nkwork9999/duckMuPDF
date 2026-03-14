@@ -12,28 +12,24 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(MUPDF_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/mupdf)
 set(MUPDF_BUILD_DIR ${MUPDF_DIR}/build/release)
 
+# Pass CMake's C compiler and architecture flags to MuPDF's make
+set(MUPDF_XCFLAGS "-fPIC ${CMAKE_C_FLAGS}")
+
 include(ExternalProject)
 ExternalProject_Add(mupdf_build
     SOURCE_DIR ${MUPDF_DIR}
     CONFIGURE_COMMAND ""
     BUILD_COMMAND make -C ${MUPDF_DIR} libs
+        CC=${CMAKE_C_COMPILER}
         HAVE_X11=no HAVE_GLUT=no HAVE_CURL=no
         HAVE_TESSERACT=no HAVE_LEPTONICA=no
-        build=release "XCFLAGS=-fPIC"
+        build=release "XCFLAGS=${MUPDF_XCFLAGS}"
     BUILD_IN_SOURCE TRUE
     INSTALL_COMMAND ""
     BUILD_BYPRODUCTS
         ${MUPDF_BUILD_DIR}/libmupdf.a
         ${MUPDF_BUILD_DIR}/libmupdf-third.a
 )
-
-add_library(mupdf_lib STATIC IMPORTED GLOBAL)
-set_target_properties(mupdf_lib PROPERTIES IMPORTED_LOCATION ${MUPDF_BUILD_DIR}/libmupdf.a)
-add_dependencies(mupdf_lib mupdf_build)
-
-add_library(mupdf_third_lib STATIC IMPORTED GLOBAL)
-set_target_properties(mupdf_third_lib PROPERTIES IMPORTED_LOCATION ${MUPDF_BUILD_DIR}/libmupdf-third.a)
-add_dependencies(mupdf_third_lib mupdf_build)
 
 set(EXTENSION_SOURCES
     src/pdfmd_extension.cpp
@@ -49,8 +45,30 @@ build_loadable_extension(${TARGET_NAME} " " ${EXTENSION_SOURCES})
 add_dependencies(${EXTENSION_NAME} mupdf_build)
 add_dependencies(${LOADABLE_EXTENSION_NAME} mupdf_build)
 
-target_link_libraries(${EXTENSION_NAME} mupdf_lib mupdf_third_lib)
-target_link_libraries(${LOADABLE_EXTENSION_NAME} mupdf_lib mupdf_third_lib)
+# Merge MuPDF static libraries into the extension static library
+# so that DuckDB's build system can link everything in one step
+set(MUPDF_MERGE_DIR ${CMAKE_BINARY_DIR}/mupdf_objs)
+if(APPLE)
+    add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
+        COMMAND libtool -static -o $<TARGET_FILE:${EXTENSION_NAME}>
+            $<TARGET_FILE:${EXTENSION_NAME}>
+            ${MUPDF_BUILD_DIR}/libmupdf.a
+            ${MUPDF_BUILD_DIR}/libmupdf-third.a
+        COMMENT "Merging MuPDF into pdfmd_extension (macOS)"
+    )
+else()
+    add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${MUPDF_MERGE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E chdir ${MUPDF_MERGE_DIR} ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf.a
+        COMMAND ${CMAKE_COMMAND} -E chdir ${MUPDF_MERGE_DIR} ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf-third.a
+        COMMAND ${CMAKE_AR} qcs $<TARGET_FILE:${EXTENSION_NAME}> ${MUPDF_MERGE_DIR}/*.o
+        COMMAND ${CMAKE_COMMAND} -E remove_directory ${MUPDF_MERGE_DIR}
+        COMMENT "Merging MuPDF into pdfmd_extension (Linux)"
+    )
+endif()
+
+# Loadable extension links MuPDF directly
+target_link_libraries(${LOADABLE_EXTENSION_NAME} ${MUPDF_BUILD_DIR}/libmupdf.a ${MUPDF_BUILD_DIR}/libmupdf-third.a)
 
 install(
   TARGETS ${EXTENSION_NAME}
