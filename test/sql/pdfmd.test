@@ -1,0 +1,25 @@
+require pdfmd
+
+# ページ数取得テスト
+query I
+SELECT pdf_page_count('test/sql/test.pdf');
+----
+1
+
+# テキスト抽出テスト
+query I
+SELECT length(pdf_text('test/sql/test.pdf')) > 0;
+----
+true
+
+# メタデータ取得テスト
+query I
+SELECT length(pdf_metadata('test/sql/test.pdf')) > 0;
+----
+true
+
+# テーブル関数テスト
+query II
+SELECT page_num, length(text) > 0 FROM pdf_pages('test/sql/test.pdf');
+----
+1	true
