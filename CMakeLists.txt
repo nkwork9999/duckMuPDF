@@ -67,8 +67,20 @@ else()
     )
 endif()
 
-# Loadable extension links MuPDF directly
-target_link_libraries(${LOADABLE_EXTENSION_NAME} ${MUPDF_BUILD_DIR}/libmupdf.a ${MUPDF_BUILD_DIR}/libmupdf-third.a)
+# Loadable extension links MuPDF with whole-archive to resolve circular deps
+if(APPLE)
+    target_link_libraries(${LOADABLE_EXTENSION_NAME}
+        -Wl,-force_load,${MUPDF_BUILD_DIR}/libmupdf.a
+        -Wl,-force_load,${MUPDF_BUILD_DIR}/libmupdf-third.a
+    )
+else()
+    target_link_libraries(${LOADABLE_EXTENSION_NAME}
+        -Wl,--whole-archive
+        ${MUPDF_BUILD_DIR}/libmupdf.a
+        ${MUPDF_BUILD_DIR}/libmupdf-third.a
+        -Wl,--no-whole-archive
+    )
+endif()
 
 install(
   TARGETS ${EXTENSION_NAME}
