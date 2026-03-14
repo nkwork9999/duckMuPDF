@@ -27,11 +27,11 @@ ExternalProject_Add(mupdf_build
         ${MUPDF_BUILD_DIR}/libmupdf-third.a
 )
 
-add_library(mupdf_lib STATIC IMPORTED)
+add_library(mupdf_lib STATIC IMPORTED GLOBAL)
 set_target_properties(mupdf_lib PROPERTIES IMPORTED_LOCATION ${MUPDF_BUILD_DIR}/libmupdf.a)
 add_dependencies(mupdf_lib mupdf_build)
 
-add_library(mupdf_third_lib STATIC IMPORTED)
+add_library(mupdf_third_lib STATIC IMPORTED GLOBAL)
 set_target_properties(mupdf_third_lib PROPERTIES IMPORTED_LOCATION ${MUPDF_BUILD_DIR}/libmupdf-third.a)
 add_dependencies(mupdf_third_lib mupdf_build)
 
