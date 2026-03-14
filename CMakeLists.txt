@@ -46,11 +46,26 @@ add_dependencies(${EXTENSION_NAME} mupdf_build)
 add_dependencies(${LOADABLE_EXTENSION_NAME} mupdf_build)
 
 # Merge MuPDF static libraries into the extension static library
-# so that DuckDB's build system can link everything in one step
-# Merge MuPDF archives into static extension
-# add_custom_command cannot use shell pipes, so use sh -c for Linux
+# Use a script file because add_custom_command escapes shell metacharacters
 set(MERGED_LIB ${CMAKE_BINARY_DIR}/merged_pdfmd.a)
 set(MUPDF_MERGE_DIR ${CMAKE_BINARY_DIR}/mupdf_objs)
+set(MERGE_SCRIPT ${CMAKE_BINARY_DIR}/merge_mupdf.sh)
+file(WRITE ${MERGE_SCRIPT}
+"#!/bin/sh
+set -e
+MERGE_DIR=\"$1\"
+AR=\"$2\"
+MUPDF_A=\"$3\"
+MUPDF_THIRD_A=\"$4\"
+EXT_A=\"$5\"
+rm -rf \"$MERGE_DIR\"
+mkdir -p \"$MERGE_DIR\"
+cd \"$MERGE_DIR\"
+\"$AR\" x \"$MUPDF_A\"
+\"$AR\" x \"$MUPDF_THIRD_A\"
+find . -name '*.o' -exec \"$AR\" qcs \"$EXT_A\" {} +
+rm -rf \"$MERGE_DIR\"
+")
 if(APPLE)
     add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
         COMMAND libtool -static -o ${MERGED_LIB}
@@ -62,10 +77,12 @@ if(APPLE)
     )
 else()
     add_custom_command(TARGET ${EXTENSION_NAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E rm -rf ${MUPDF_MERGE_DIR}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${MUPDF_MERGE_DIR}
-        COMMAND sh -c "cd ${MUPDF_MERGE_DIR} && ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf.a && ${CMAKE_AR} x ${MUPDF_BUILD_DIR}/libmupdf-third.a && find . -name '*.o' -exec ${CMAKE_AR} qcs $<TARGET_FILE:${EXTENSION_NAME}> {} +"
-        COMMAND ${CMAKE_COMMAND} -E rm -rf ${MUPDF_MERGE_DIR}
+        COMMAND sh ${MERGE_SCRIPT}
+            ${MUPDF_MERGE_DIR}
+            ${CMAKE_AR}
+            ${MUPDF_BUILD_DIR}/libmupdf.a
+            ${MUPDF_BUILD_DIR}/libmupdf-third.a
+            $<TARGET_FILE:${EXTENSION_NAME}>
         COMMENT "Merging MuPDF into pdfmd_extension (Linux)"
     )
 endif()
